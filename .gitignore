@@ -1,0 +1,56 @@
+# Sensitive configuration files
+includes/config.php
+
+# Upload directories
+assets/uploads/
+uploads/
+
+# Log files
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-*
+
+# Backup files
+*.bak
+*~
+
+# Environment files
+.env
+.env.local
+.env.production
+.env.staging
+
+# Cache directories
+cache/
+tmp/
+
+# Node modules (if using any build tools)
+node_modules/
+npm-debug.log*
+
+# PHP specific
+*.phar
+composer.phar
+vendor/
+
+# Database backups
+*.sql
+*.sqlite
+*.db
+
+# Session files
+sessions/
+
+# Error logs
+error.log
+access.log
