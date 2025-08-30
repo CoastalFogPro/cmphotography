@@ -1,4 +1,4 @@
-# Photography Website with CMS
+# Cris Mitchell Photography Website
 
 A complete one-page photography portfolio with a lightweight CMS backend built with PHP and MySQL.
 
@@ -124,6 +124,13 @@ A complete one-page photography portfolio with a lightweight CMS backend built w
 - **Session Security**: Secure session handling
 - **File Upload Security**: Type and size validation
 - **Password Hashing**: Bcrypt password hashing
+
+## Recent Updates
+
+- Fixed gallery exclusion logic to prevent about/hero images appearing in gallery
+- Fixed admin image delete functionality with proper Alpine.js modal
+- Enhanced security features and CSRF protection
+- Improved responsive design and mobile experience
 
 ## Customization
 
