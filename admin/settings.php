@@ -119,12 +119,10 @@ while ($row = $settingsQuery->fetch()) {
                     <div class="hidden md:flex space-x-4">
                         <a href="/admin/" class="text-custom-blue hover:text-earth-brown transition">Dashboard</a>
                         <a href="/admin/galleries.php" class="text-custom-blue hover:text-earth-brown transition">Galleries</a>
-                        <a href="/admin/images.php" class="text-custom-blue hover:text-earth-brown transition">Images</a>
-                        <a href="/admin/products.php" class="text-custom-blue hover:text-earth-brown transition">Products</a>
-                        <a href="/admin/services.php" class="text-custom-blue hover:text-earth-brown transition">Services</a>
-                        <a href="/admin/settings.php" class="text-earth-brown font-medium">Settings</a>
-                        <a href="/admin/contacts.php" class="text-custom-blue hover:text-earth-brown transition">Contacts</a>
+                        <a href="/admin/recent-work.php" class="text-custom-blue hover:text-earth-brown transition">Recent Work</a>
+                        <a href="/admin/print-settings.php" class="text-custom-blue hover:text-earth-brown transition">Print Settings</a>
                         <a href="/admin/orders.php" class="text-custom-blue hover:text-earth-brown transition">Orders</a>
+                        <a href="/admin/settings.php" class="text-earth-brown font-medium">Settings</a>
                     </div>
                 </div>
                 <div class="flex items-center space-x-4">

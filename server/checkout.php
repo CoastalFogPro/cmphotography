@@ -37,12 +37,11 @@ try {
         throw new Exception('Photo not found');
     }
 
-    // Get size data and validate it belongs to this photo
+    // Get size data from global print sizes table
     $db = getDB();
-    $stmt = $db->prepare("SELECT ps.*, p.id as photo_id FROM photo_sizes ps 
-                         JOIN photos p ON ps.photo_id = p.id 
-                         WHERE ps.id = ? AND p.id = ? AND ps.is_active = 1 AND ps.stripe_price_id != ''");
-    $stmt->execute([$sizeId, $photoId]);
+    $stmt = $db->prepare("SELECT *, base_price as price_cents, label as size_label FROM print_sizes 
+                         WHERE id = ? AND status = 'active'");
+    $stmt->execute([$sizeId]);
     $size = $stmt->fetch();
 
     if (!$size) {
@@ -55,15 +54,22 @@ try {
     $successUrl = baseUrl('/?order=success');
     $cancelUrl = $_SERVER['HTTP_REFERER'] ?? baseUrl("/gallery.php?slug={$photo['gallery_slug']}");
 
-    // Prepare line items
+    // Create dynamic price data (since we don't have pre-configured Stripe price IDs)
     $lineItems = [
         [
-            'price' => $size['stripe_price_id'],
+            'price_data' => [
+                'currency' => strtolower(STRIPE_CURRENCY ?? 'usd'),
+                'product_data' => [
+                    'name' => "{$size['size_label']} Print - {$photo['title']}",
+                    'description' => $size['description'] ?: "High-quality {$size['size_label']} print"
+                ],
+                'unit_amount' => $size['price_cents']
+            ],
             'quantity' => $quantity
         ]
     ];
 
-    // Prepare checkout session data
+    // Prepare checkout session data with custom branding
     $checkoutData = [
         'payment_method_types' => ['card'],
         'line_items' => $lineItems,
@@ -75,7 +81,18 @@ try {
             'size_id' => $sizeId,
             'photo_title' => $photo['title'] ?: 'Untitled Photo',
             'size_label' => $size['size_label']
-        ]
+        ],
+        // Custom branding
+        'custom_text' => [
+            'submit' => [
+                'message' => 'Complete your photography print purchase'
+            ]
+        ],
+        'customer_creation' => 'always',
+        'phone_number_collection' => [
+            'enabled' => false
+        ],
+        'billing_address_collection' => 'required'
     ];
 
     // Add shipping if enabled
@@ -99,10 +116,17 @@ try {
         'Content-Type: application/x-www-form-urlencoded'
     ]);
     
-    // Convert checkout data to form-encoded format
+    // Convert checkout data to form-encoded format with dynamic pricing
+    $currency = strtolower(STRIPE_CURRENCY ?? 'usd');
+    $productName = "{$size['size_label']} Print - {$photo['title']}";
+    $productDescription = $size['description'] ?: "High-quality {$size['size_label']} print";
+    
     $postData = http_build_query([
         'payment_method_types[0]' => 'card',
-        'line_items[0][price]' => $size['stripe_price_id'],
+        'line_items[0][price_data][currency]' => $currency,
+        'line_items[0][price_data][product_data][name]' => $productName,
+        'line_items[0][price_data][product_data][description]' => $productDescription,
+        'line_items[0][price_data][unit_amount]' => $size['price_cents'],
         'line_items[0][quantity]' => $quantity,
         'mode' => 'payment',
         'success_url' => $successUrl,
@@ -110,7 +134,11 @@ try {
         'metadata[photo_id]' => $photoId,
         'metadata[size_id]' => $sizeId,
         'metadata[photo_title]' => $photo['title'] ?: 'Untitled Photo',
-        'metadata[size_label]' => $size['size_label']
+        'metadata[size_label]' => $size['size_label'],
+        // Custom branding
+        'custom_text[submit][message]' => 'Complete your photography print purchase',
+        'customer_creation' => 'always',
+        'billing_address_collection' => 'required'
     ]);
 
     // Add shipping if configured

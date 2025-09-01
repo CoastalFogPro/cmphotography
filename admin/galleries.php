@@ -23,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $slug = sanitizeInput($_POST['slug'] ?? '');
                 $description = trim($_POST['description'] ?? '');
                 $sortOrder = (int)($_POST['sort_order'] ?? 0);
-                $isActive = isset($_POST['is_active']) ? 1 : 0;
+                $status = isset($_POST['is_active']) ? 'active' : 'draft';
                 
                 // Auto-generate slug if empty
                 if (empty($slug) && !empty($title)) {
@@ -52,12 +52,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                         
                         // Insert gallery
-                        $stmt = $db->prepare("INSERT INTO galleries (title, slug, description, cover_image, sort_order, is_active) VALUES (?, ?, ?, ?, ?, ?)");
-                        if ($stmt->execute([$title, $slug, $description, $coverImage, $sortOrder, $isActive])) {
+                        $stmt = $db->prepare("INSERT INTO galleries (title, slug, description, cover_image, sort_order, status) VALUES (?, ?, ?, ?, ?, ?)");
+                        if ($stmt->execute([$title, $slug, $description, $coverImage, $sortOrder, $status])) {
                             $message = 'Gallery created successfully!';
                             $action = 'list';
                         } else {
-                            $message = 'Error creating gallery.';
+                            $errorInfo = $stmt->errorInfo();
+                            $message = 'Error creating gallery: ' . ($errorInfo[2] ?? 'Unknown database error');
+                            error_log('Gallery creation error: ' . print_r($errorInfo, true));
                         }
                     }
                 }
@@ -69,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $slug = sanitizeInput($_POST['slug'] ?? '');
                 $description = trim($_POST['description'] ?? '');
                 $sortOrder = (int)($_POST['sort_order'] ?? 0);
-                $isActive = isset($_POST['is_active']) ? 1 : 0;
+                $status = isset($_POST['is_active']) ? 'active' : 'draft';
                 
                 if ($id <= 0 || empty($title) || empty($slug)) {
                     $message = 'Invalid data provided.';
@@ -106,8 +108,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                         
                         // Update gallery
-                        $stmt = $db->prepare("UPDATE galleries SET title = ?, slug = ?, description = ?, cover_image = ?, sort_order = ?, is_active = ? WHERE id = ?");
-                        if ($stmt->execute([$title, $slug, $description, $coverImage, $sortOrder, $isActive, $id])) {
+                        $stmt = $db->prepare("UPDATE galleries SET title = ?, slug = ?, description = ?, cover_image = ?, sort_order = ?, status = ? WHERE id = ?");
+                        if ($stmt->execute([$title, $slug, $description, $coverImage, $sortOrder, $status, $id])) {
                             $message = 'Gallery updated successfully!';
                             $action = 'list';
                         } else {
@@ -223,12 +225,10 @@ if ($action === 'list') {
                     <div class="hidden md:flex space-x-4">
                         <a href="/admin/" class="text-custom-blue hover:text-earth-brown transition">Dashboard</a>
                         <a href="/admin/galleries.php" class="text-earth-brown font-medium">Galleries</a>
-                        <a href="/admin/images.php" class="text-custom-blue hover:text-earth-brown transition">Images</a>
-                        <a href="/admin/products.php" class="text-custom-blue hover:text-earth-brown transition">Products</a>
-                        <a href="/admin/services.php" class="text-custom-blue hover:text-earth-brown transition">Services</a>
-                        <a href="/admin/settings.php" class="text-custom-blue hover:text-earth-brown transition">Settings</a>
-                        <a href="/admin/contacts.php" class="text-custom-blue hover:text-earth-brown transition">Contacts</a>
+                        <a href="/admin/recent-work.php" class="text-custom-blue hover:text-earth-brown transition">Recent Work</a>
+                        <a href="/admin/print-settings.php" class="text-custom-blue hover:text-earth-brown transition">Print Settings</a>
                         <a href="/admin/orders.php" class="text-custom-blue hover:text-earth-brown transition">Orders</a>
+                        <a href="/admin/settings.php" class="text-custom-blue hover:text-earth-brown transition">Settings</a>
                     </div>
                 </div>
                 <div class="flex items-center space-x-4">
@@ -339,8 +339,8 @@ if ($action === 'list') {
                                             </a>
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap">
-                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <?php echo $gallery['is_active'] ? 'bg-sage text-white' : 'bg-caramel text-earth-brown'; ?>">
-                                                <?php echo $gallery['is_active'] ? 'Active' : 'Inactive'; ?>
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <?php echo $gallery['status'] === 'active' ? 'bg-sage text-white' : 'bg-caramel text-earth-brown'; ?>">
+                                                <?php echo ucfirst($gallery['status']); ?>
                                             </span>
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-custom-blue">
@@ -483,7 +483,7 @@ if ($action === 'list') {
                                 </div>
                                 
                                 <div class="flex items-center pt-6">
-                                    <input type="checkbox" name="is_active" id="is_active" <?php echo $editGallery['is_active'] ? 'checked' : ''; ?>
+                                    <input type="checkbox" name="is_active" id="is_active" <?php echo $editGallery['status'] === 'active' ? 'checked' : ''; ?>
                                            class="h-4 w-4 text-earth-brown focus:ring-earth-brown border-sage rounded">
                                     <label for="is_active" class="ml-2 block text-sm text-earth-brown">Gallery is active</label>
                                 </div>
@@ -542,7 +542,7 @@ if ($action === 'list') {
     </div>
 
     <!-- Delete Confirmation Modal -->
-    <div x-data="{ showModal: false, galleryId: null }" x-show="showModal" x-cloak 
+    <div x-data="deleteModal" x-show="showModal" x-cloak 
          class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div class="bg-white p-6 rounded-lg max-w-md w-full mx-4 border border-sage">
             <h3 class="text-lg font-medium text-earth-brown mb-4">Confirm Deletion</h3>
@@ -564,14 +564,22 @@ if ($action === 'list') {
     </div>
 
     <script>
-        function deleteGallery(id) {
-            Alpine.store('modal', { showModal: true, galleryId: id });
-        }
-
+        // Alpine.js components
         document.addEventListener('alpine:init', () => {
+            Alpine.data('deleteModal', () => ({
+                showModal: false,
+                galleryId: null,
+                
+                openModal(id) {
+                    this.galleryId = id;
+                    this.showModal = true;
+                }
+            }));
+            
             Alpine.data('galleryForm', () => ({
                 title: '<?php echo $action === 'edit' ? sanitizeInput($editGallery['title']) : ''; ?>',
                 slug: '<?php echo $action === 'edit' ? sanitizeInput($editGallery['slug']) : ''; ?>',
+                previousTitle: '<?php echo $action === 'edit' ? sanitizeInput($editGallery['title']) : ''; ?>',
 
                 updateSlug() {
                     if (this.title && (!this.slug || this.slug === this.createSlug(this.previousTitle))) {
@@ -587,6 +595,12 @@ if ($action === 'list') {
                 }
             }));
         });
+        
+        function deleteGallery(id) {
+            // Get the Alpine component and open the modal
+            const modal = Alpine.$data(document.querySelector('[x-data="deleteModal"]'));
+            modal.openModal(id);
+        }
     </script>
 </body>
 </html>

@@ -3,8 +3,8 @@
  * Database Connection and Core Utilities
  */
 
-// Start session if not already started
-if (session_status() === PHP_SESSION_NONE) {
+// Start session if not already started (and if headers haven't been sent)
+if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
     session_start();
 }
 
@@ -348,7 +348,25 @@ function getGalleryPhotos($galleryId, $page = 1, $perPage = 24) {
  */
 function getPhoto($photoId) {
     $db = getDB();
-    $stmt = $db->prepare("SELECT p.*, g.title as gallery_title, g.slug as gallery_slug 
+    
+    // First, check what columns exist in the photos table
+    $columnsStmt = $db->query("SHOW COLUMNS FROM photos");
+    $columns = $columnsStmt->fetchAll();
+    $columnNames = array_column($columns, 'Field');
+    
+    // Build the SELECT clause dynamically
+    $photoColumns = [];
+    foreach ($columnNames as $col) {
+        $photoColumns[] = "p.$col";
+    }
+    
+    // Add gallery columns
+    $photoColumns[] = "g.title as gallery_title";
+    $photoColumns[] = "g.slug as gallery_slug";
+    
+    $selectClause = implode(', ', $photoColumns);
+    
+    $stmt = $db->prepare("SELECT $selectClause
                           FROM photos p 
                           JOIN galleries g ON p.gallery_id = g.id 
                           WHERE p.id = ?");
@@ -358,15 +376,18 @@ function getPhoto($photoId) {
 
 /**
  * Get available sizes for a photo
- * @param int $photoId Photo ID
+ * @param int $photoId Photo ID (currently unused - returns all active sizes)
  * @return array List of size options
  */
 function getPhotoSizes($photoId) {
+    // DEBUG: This function was updated at 23:20 UTC
+    error_log("DEBUG: getPhotoSizes called from updated function");
     $db = getDB();
-    $stmt = $db->prepare("SELECT * FROM photo_sizes 
-                          WHERE photo_id = ? AND is_active = 1 AND stripe_price_id != '' 
-                          ORDER BY sort_order ASC, price_cents ASC");
-    $stmt->execute([(int)$photoId]);
+    $stmt = $db->prepare("SELECT id, name, label as size_label, dimensions, base_price as price_cents, description, sort_order, status 
+                          FROM print_sizes 
+                          WHERE status = 'active' 
+                          ORDER BY sort_order ASC, base_price ASC");
+    $stmt->execute();
     return $stmt->fetchAll();
 }
 
@@ -377,7 +398,7 @@ function getPhotoSizes($photoId) {
  */
 function getPhotoSize($sizeId) {
     $db = getDB();
-    $stmt = $db->prepare("SELECT * FROM photo_sizes WHERE id = ?");
+    $stmt = $db->prepare("SELECT * FROM print_sizes WHERE id = ?");
     $stmt->execute([(int)$sizeId]);
     return $stmt->fetch();
 }
@@ -390,16 +411,14 @@ function getPhotoSize($sizeId) {
 function saveOrder($orderData) {
     $db = getDB();
     $stmt = $db->prepare("INSERT INTO orders 
-                          (stripe_session_id, customer_email, photo_id, size_id, quantity, amount_cents, currency, status) 
-                          VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+                          (stripe_session_id, customer_email, photo_id, photo_size_id, total_amount, status) 
+                          VALUES (?, ?, ?, ?, ?, ?)");
     $result = $stmt->execute([
         $orderData['stripe_session_id'] ?? null,
         $orderData['customer_email'] ?? null,
         $orderData['photo_id'] ?? null,
-        $orderData['size_id'] ?? null,
-        $orderData['quantity'] ?? 1,
-        $orderData['amount_cents'] ?? null,
-        $orderData['currency'] ?? STRIPE_CURRENCY,
+        $orderData['size_id'] ?? null, // This maps to photo_size_id in the database
+        $orderData['amount_cents'] ?? null, // This maps to total_amount in the database
         $orderData['status'] ?? 'pending'
     ]);
     
@@ -417,7 +436,7 @@ function updateOrderPayment($sessionId, $paymentData) {
     $stmt = $db->prepare("UPDATE orders SET 
                           stripe_payment_intent = ?, 
                           customer_email = ?, 
-                          amount_cents = ?,
+                          total_amount = ?,
                           status = 'completed'
                           WHERE stripe_session_id = ?");
     return $stmt->execute([

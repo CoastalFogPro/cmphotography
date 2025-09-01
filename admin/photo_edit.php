@@ -27,20 +27,24 @@ $action = $_GET['action'] ?? 'manage';
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Debug output for form submission
+    error_log('Photo Edit Form Submission - Photo ID: ' . $photoId);
+    error_log('POST Data: ' . print_r($_POST, true));
+    
     $token = $_POST['csrf_token'] ?? '';
     
     if (!validateCSRFToken($token)) {
         $message = 'Invalid request. Please try again.';
+        error_log('CSRF token validation failed');
     } else {
         switch ($_POST['form_action']) {
             case 'update_photo':
                 $title = sanitizeInput($_POST['title'] ?? '');
-                $alt = sanitizeInput($_POST['alt'] ?? '');
-                $isFeatured = isset($_POST['is_featured']) ? 1 : 0;
+                $altText = sanitizeInput($_POST['alt_text'] ?? '');
                 $sortOrder = (int)($_POST['sort_order'] ?? 0);
                 
-                $stmt = $db->prepare("UPDATE photos SET title = ?, alt = ?, is_featured = ?, sort_order = ? WHERE id = ?");
-                if ($stmt->execute([$title, $alt, $isFeatured, $sortOrder, $photoId])) {
+                $stmt = $db->prepare("UPDATE photos SET title = ?, alt_text = ?, sort_order = ? WHERE id = ?");
+                if ($stmt->execute([$title, $altText, $sortOrder, $photoId])) {
                     $message = 'Photo updated successfully!';
                     // Refresh photo data
                     $stmt = $db->prepare("SELECT p.*, g.title as gallery_title, g.id as gallery_id FROM photos p JOIN galleries g ON p.gallery_id = g.id WHERE p.id = ?");
@@ -191,14 +195,14 @@ if ($action === 'edit_size') {
                 <div class="bg-white rounded-lg shadow p-6 sticky top-6">
                     <h3 class="text-lg font-medium text-gray-900 mb-4">Photo Preview</h3>
                     <div class="aspect-square bg-gray-100 rounded-lg overflow-hidden mb-4">
-                        <img src="/assets/uploads/<?php echo $photo['full_path']; ?>" 
-                             alt="<?php echo sanitizeInput($photo['alt']); ?>"
+                        <img src="/assets/uploads/full/<?php echo $photo['filename']; ?>" 
+                             alt="<?php echo sanitizeInput($photo['alt_text'] ?? 'Photo'); ?>"
                              class="w-full h-full object-cover">
                     </div>
                     <div class="space-y-2 text-sm text-gray-600">
                         <div><strong>Gallery:</strong> <?php echo sanitizeInput($photo['gallery_title']); ?></div>
                         <div><strong>Uploaded:</strong> <?php echo formatDate($photo['created_at']); ?></div>
-                        <div><strong>Featured:</strong> <?php echo $photo['is_featured'] ? 'Yes' : 'No'; ?></div>
+                        <div><strong>Sort Order:</strong> <?php echo $photo['sort_order']; ?></div>
                     </div>
                     <div class="mt-4">
                         <a href="/photo.php?id=<?php echo $photo['id']; ?>" target="_blank" 
@@ -234,15 +238,10 @@ if ($action === 'edit_size') {
                         </div>
 
                         <div>
-                            <label for="alt" class="block text-sm font-medium text-gray-700 mb-2">Alt Text *</label>
-                            <input type="text" name="alt" id="alt" value="<?php echo sanitizeInput($photo['alt']); ?>" required
-                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        </div>
-
-                        <div class="flex items-center">
-                            <input type="checkbox" name="is_featured" id="is_featured" <?php echo $photo['is_featured'] ? 'checked' : ''; ?>
-                                   class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
-                            <label for="is_featured" class="ml-2 block text-sm text-gray-900">Featured photo</label>
+                            <label for="alt_text" class="block text-sm font-medium text-gray-700 mb-2">Alt Text</label>
+                            <input type="text" name="alt_text" id="alt_text" value="<?php echo sanitizeInput($photo['alt_text'] ?? ''); ?>"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                   placeholder="Descriptive text for screen readers">
                         </div>
 
                         <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 transition">

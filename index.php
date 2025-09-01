@@ -11,35 +11,8 @@ while ($row = $settingsQuery->fetch()) {
     $settings[$row['setting_key']] = $row['setting_value'];
 }
 
-// Get gallery images (exclude hero and about images by filename and title)
-$excludeFiles = [];
-if (!empty($settings['hero_image'])) {
-    $excludeFiles[] = $settings['hero_image'];
-}
-if (!empty($settings['about_image'])) {
-    $excludeFiles[] = $settings['about_image'];
-}
-
-// Build exclusion query - exclude hero/about images and images titled "Hero Image" or "About Image"
-if (!empty($excludeFiles)) {
-    $placeholders = str_repeat('?,', count($excludeFiles) - 1) . '?';
-    $galleryImages = $db->prepare("
-        SELECT * FROM images 
-        WHERE filename NOT IN ($placeholders) 
-        AND (title IS NULL OR (title != 'Hero Image' AND title != 'About Image' AND title != 'About Me' AND title != 'About Photo'))
-        ORDER BY sort_order ASC, created_at DESC 
-        LIMIT 12
-    ");
-    $galleryImages->execute($excludeFiles);
-    $galleryImages = $galleryImages->fetchAll();
-} else {
-    $galleryImages = $db->query("
-        SELECT * FROM images 
-        WHERE (title IS NULL OR (title != 'Hero Image' AND title != 'About Image' AND title != 'About Me' AND title != 'About Photo'))
-        ORDER BY sort_order ASC, created_at DESC 
-        LIMIT 12
-    ")->fetchAll();
-}
+// Get daily photos for homepage gallery section (work-in-progress photos)
+$dailyPhotos = $db->query("SELECT * FROM daily_photos ORDER BY sort_order ASC, created_at DESC LIMIT 6")->fetchAll();
 
 // Get featured products
 $featuredProducts = $db->query("SELECT p.*, i.filename as image_filename FROM products p LEFT JOIN images i ON p.image_id = i.id WHERE p.is_active = 1 ORDER BY p.sort_order ASC, p.created_at DESC LIMIT 6")->fetchAll();
@@ -98,6 +71,9 @@ $aboutImage = !empty($settings['about_image']) ? '/assets/uploads/full/' . $sett
         .bg-light-sage { background-color: #E8EDE6; }
         .bg-custom-blue { background-color: #8c9fa5; }
         .bg-custom-light-blue { background-color: #c5d4d9; }
+        .bg-featured-section { background-color: #a6876b; }
+        .text-featured { color: #c5d4d9; }
+        .bg-featured-button { background-color: #c5d4d9; }
         
         .text-earth-brown { color: #8B5A3C; }
         .text-caramel { color: #D4A574; }
@@ -106,13 +82,18 @@ $aboutImage = !empty($settings['about_image']) ? '/assets/uploads/full/' . $sett
         
         .border-earth-brown { border-color: #8B5A3C; }
         .border-caramel { border-color: #D4A574; }
-        .border-sage { border-color: #B8C5B1; }
+        .border-sage { color: #B8C5B1; }
         .border-dusty-blue { border-color: #9BB3C4; }
         
         .hover\:bg-earth-brown:hover { background-color: #7A4D33; }
         .hover\:bg-caramel:hover { background-color: #C99A66; }
         .hover\:bg-sage:hover { background-color: #A8B5A1; }
         .hover\:bg-dusty-blue:hover { background-color: #8AA3B4; }
+        .hover\:bg-featured-dark:hover { background-color: #b6968b; }
+        
+        .hover\:text-earth-brown:hover { color: #8B5A3C; }
+        .hover\:text-caramel:hover { color: #D4A574; }
+        .hover\:text-custom-blue:hover { color: #8c9fa5; }
         
         /* Force hide any modal overlays on page load */
         .fixed.inset-0[x-show] {
@@ -139,15 +120,18 @@ $aboutImage = !empty($settings['about_image']) ? '/assets/uploads/full/' . $sett
                 <!-- Desktop Navigation -->
                 <div class="hidden md:block">
                     <div class="ml-10 flex items-baseline space-x-8">
-                        <a href="#home" class="text-earth-brown hover:text-caramel transition duration-200 font-medium">Home</a>
+                        <a href="#home" class="text-earth-brown hover:text-custom-blue transition duration-200 font-medium">Home</a>
+                        <a href="#featured-collections" class="text-earth-brown hover:text-custom-blue transition duration-200 font-medium">Featured Collections</a>
+                        <a href="#about" class="text-earth-brown hover:text-custom-blue transition duration-200 font-medium">About</a>
+                        <a href="#gallery" class="text-earth-brown hover:text-custom-blue transition duration-200 font-medium">Recent Work</a>
                         
                         <!-- Galleries Dropdown -->
                         <?php if (!empty($galleries)): ?>
-                            <div class="relative" @mouseleave="galleriesOpen = false">
-                                <button @mouseenter="galleriesOpen = true" 
-                                        class="text-earth-brown hover:text-caramel transition duration-200 flex items-center font-medium">
+                            <div class="relative" @click.away="galleriesOpen = false">
+                                <button @click="galleriesOpen = !galleriesOpen" 
+                                        class="text-earth-brown hover:text-custom-blue transition duration-200 flex items-center font-medium">
                                     Galleries
-                                    <svg class="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg class="ml-1 w-4 h-4 transform transition-transform" :class="{ 'rotate-180': galleriesOpen }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                                     </svg>
                                 </button>
@@ -158,7 +142,7 @@ $aboutImage = !empty($settings['about_image']) ? '/assets/uploads/full/' . $sett
                                      x-transition:leave="transition ease-in duration-75"
                                      x-transition:leave-start="opacity-100 scale-100"
                                      x-transition:leave-end="opacity-0 scale-95"
-                                     class="absolute left-0 mt-2 w-56 bg-white rounded-md shadow-lg border border-sage ring-1 ring-sage ring-opacity-20">
+                                     class="absolute left-0 mt-2 w-56 bg-white rounded-md shadow-lg border border-sage ring-1 ring-sage ring-opacity-20 z-50">
                                     <div class="py-2">
                                         <?php foreach ($galleries as $gallery): ?>
                                             <a href="/gallery.php?slug=<?php echo urlencode($gallery['slug']); ?>" 
@@ -171,11 +155,7 @@ $aboutImage = !empty($settings['about_image']) ? '/assets/uploads/full/' . $sett
                             </div>
                         <?php endif; ?>
                         
-                        <a href="#gallery" class="text-earth-brown hover:text-caramel transition duration-200 font-medium">Gallery</a>
-                        <a href="#prints" class="text-earth-brown hover:text-caramel transition duration-200 font-medium">Prints</a>
-                        <a href="#about" class="text-earth-brown hover:text-caramel transition duration-200 font-medium">About</a>
-                        <a href="#services" class="text-earth-brown hover:text-caramel transition duration-200 font-medium">Services</a>
-                        <a href="#contact" class="text-earth-brown hover:text-caramel transition duration-200 font-medium">Contact</a>
+                        <a href="#contact" class="text-earth-brown hover:text-custom-blue transition duration-200 font-medium">Contact</a>
                     </div>
                 </div>
                 
@@ -194,6 +174,9 @@ $aboutImage = !empty($settings['about_image']) ? '/assets/uploads/full/' . $sett
             <div x-show="isOpen" x-cloak x-transition class="md:hidden">
                 <div class="px-2 pt-2 pb-3 space-y-1 bg-white border-t">
                     <a href="#home" class="block px-3 py-2 text-gray-900 hover:text-blue-600" @click="isOpen = false">Home</a>
+                    <a href="#featured-collections" class="block px-3 py-2 text-gray-900 hover:text-blue-600" @click="isOpen = false">Featured Collections</a>
+                    <a href="#about" class="block px-3 py-2 text-gray-900 hover:text-blue-600" @click="isOpen = false">About</a>
+                    <a href="#gallery" class="block px-3 py-2 text-gray-900 hover:text-blue-600" @click="isOpen = false">Recent Work</a>
                     
                     <?php if (!empty($galleries)): ?>
                         <div class="space-y-1">
@@ -208,10 +191,6 @@ $aboutImage = !empty($settings['about_image']) ? '/assets/uploads/full/' . $sett
                         </div>
                     <?php endif; ?>
                     
-                    <a href="#gallery" class="block px-3 py-2 text-gray-900 hover:text-blue-600" @click="isOpen = false">Gallery</a>
-                    <a href="#prints" class="block px-3 py-2 text-gray-900 hover:text-blue-600" @click="isOpen = false">Prints</a>
-                    <a href="#about" class="block px-3 py-2 text-gray-900 hover:text-blue-600" @click="isOpen = false">About</a>
-                    <a href="#services" class="block px-3 py-2 text-gray-900 hover:text-blue-600" @click="isOpen = false">Services</a>
                     <a href="#contact" class="block px-3 py-2 text-gray-900 hover:text-blue-600" @click="isOpen = false">Contact</a>
                 </div>
             </div>
@@ -231,11 +210,11 @@ $aboutImage = !empty($settings['about_image']) ? '/assets/uploads/full/' . $sett
 
     <!-- Featured Galleries Section -->
     <?php if (!empty($featuredGalleries)): ?>
-    <section class="py-20 bg-light-sage">
+    <section id="featured-collections" class="py-20 bg-featured-section">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-16">
-                <h2 class="text-4xl font-serif font-bold text-earth-brown mb-4">Featured Collections</h2>
-                <p class="text-xl text-gray-700">Explore our curated photo galleries</p>
+                <h2 class="text-4xl font-serif font-bold text-featured mb-4">Featured Collections</h2>
+                <p class="text-xl text-white">View our curated photo galleries and shop for prints to enjoy beyond the screen.</p>
             </div>
             
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -267,13 +246,13 @@ $aboutImage = !empty($settings['about_image']) ? '/assets/uploads/full/' . $sett
                         </div>
                         
                         <div class="text-center">
-                            <h3 class="text-xl font-serif font-semibold text-earth-brown mb-2 group-hover:text-caramel transition duration-200">
+                            <h3 class="text-xl font-serif font-semibold text-featured mb-2 group-hover:text-caramel transition duration-200">
                                 <?php echo sanitizeInput($gallery['title']); ?>
                             </h3>
                             <?php if ($gallery['description']): ?>
-                                <p class="text-gray-600 mb-2"><?php echo sanitizeInput($gallery['description']); ?></p>
+                                <p class="text-white mb-2"><?php echo sanitizeInput($gallery['description']); ?></p>
                             <?php endif; ?>
-                            <p class="text-sm text-gray-500">
+                            <p class="text-sm text-white">
                                 <?php echo $gallery['photo_count']; ?> 
                                 <?php echo $gallery['photo_count'] == 1 ? 'photo' : 'photos'; ?>
                             </p>
@@ -281,20 +260,12 @@ $aboutImage = !empty($settings['about_image']) ? '/assets/uploads/full/' . $sett
                     </div>
                 <?php endforeach; ?>
             </div>
-            
-            <!-- View All Galleries Button -->
-            <?php if (count($featuredGalleries) > 0): ?>
-                <div class="text-center mt-12">
-                    <a href="#galleries" class="inline-block bg-earth-brown text-white px-8 py-3 rounded-lg hover:bg-caramel transition duration-200 shadow-lg">
-                        View All Collections
-                    </a>
-                </div>
-            <?php endif; ?>
         </div>
     </section>
     <?php endif; ?>
 
-    <!-- Featured Prints Section -->
+    <!-- Featured Prints Section - Hidden for now -->
+    <?php if (false): // Change to true to show prints again ?>
     <section id="prints" class="py-20 bg-white">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-16">
@@ -346,8 +317,10 @@ $aboutImage = !empty($settings['about_image']) ? '/assets/uploads/full/' . $sett
             <?php endif; ?>
         </div>
     </section>
+    <?php endif; ?>
 
-    <!-- Services Section -->
+    <!-- Services Section - Hidden for now -->
+    <?php if (false): // Change to true to show services again ?>
     <section id="services" class="py-20 bg-custom-light-blue">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-16">
@@ -386,6 +359,7 @@ $aboutImage = !empty($settings['about_image']) ? '/assets/uploads/full/' . $sett
             <?php endif; ?>
         </div>
     </section>
+    <?php endif; ?>
 
     <!-- About Section -->
     <section id="about" class="py-20 bg-white">
@@ -425,22 +399,36 @@ $aboutImage = !empty($settings['about_image']) ? '/assets/uploads/full/' . $sett
         </div>
     </section>
 
-    <!-- Gallery Section -->
-    <section id="gallery" class="py-20 bg-white">
+    <!-- Daily Work Section -->
+    <section id="gallery" class="py-20 bg-custom-light-blue">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-16">
-                <h2 class="text-4xl font-serif font-bold text-gray-900 mb-4">Gallery</h2>
-                <p class="text-xl text-gray-600">A curated collection of my recent work</p>
+                <h2 class="text-4xl font-serif font-bold text-gray-900 mb-4">Recent Work</h2>
+                <p class="text-xl text-gray-600">A glimpse into my current projects and daily inspiration</p>
             </div>
             
-            <?php if (!empty($galleryImages)): ?>
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" x-data="gallery">
-                    <?php foreach ($galleryImages as $index => $image): ?>
+            <?php if (!empty($dailyPhotos)): ?>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" x-data="gallery">
+                    <?php foreach ($dailyPhotos as $index => $photo): ?>
                         <div class="aspect-square overflow-hidden rounded-lg cursor-pointer group"
-                             @click="openModal('<?php echo $image['filename']; ?>', '<?php echo sanitizeInput($image['title'] ?: 'Untitled'); ?>', '<?php echo sanitizeInput($image['alt_text']); ?>')">
-                            <img src="/assets/uploads/thumbs/<?php echo $image['filename']; ?>" 
-                                 alt="<?php echo sanitizeInput($image['alt_text']); ?>"
+                             @click="openModal('<?php echo $photo['filename']; ?>', '<?php echo sanitizeInput($photo['title'] ?: 'Untitled'); ?>', '<?php echo sanitizeInput($photo['alt_text']); ?>')">
+                            <img src="/assets/uploads/thumbs/<?php echo $photo['filename']; ?>" 
+                                 alt="<?php echo sanitizeInput($photo['alt_text']); ?>"
                                  class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
+                            
+                            <!-- Photo info overlay -->
+                            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition duration-300 flex items-end">
+                                <?php if ($photo['title'] || $photo['description']): ?>
+                                    <div class="p-4 text-white opacity-0 group-hover:opacity-100 transition duration-300">
+                                        <?php if ($photo['title']): ?>
+                                            <h3 class="font-medium text-sm"><?php echo sanitizeInput($photo['title']); ?></h3>
+                                        <?php endif; ?>
+                                        <?php if ($photo['description']): ?>
+                                            <p class="text-xs text-gray-200 mt-1"><?php echo sanitizeInput(truncateText($photo['description'], 60)); ?></p>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -463,7 +451,8 @@ $aboutImage = !empty($settings['about_image']) ? '/assets/uploads/full/' . $sett
                 </div>
             <?php else: ?>
                 <div class="text-center">
-                    <p class="text-gray-600">Gallery coming soon...</p>
+                    <p class="text-gray-600">Daily work coming soon...</p>
+                    <p class="text-sm text-gray-500 mt-2">Check back regularly for new work-in-progress photos</p>
                 </div>
             <?php endif; ?>
         </div>
@@ -474,95 +463,94 @@ $aboutImage = !empty($settings['about_image']) ? '/assets/uploads/full/' . $sett
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-16">
                 <h2 class="text-4xl font-serif font-bold text-earth-brown mb-4">Get in Touch</h2>
-                <p class="text-xl text-gray-600">Ready to capture your special moments? Let's talk!</p>
+                <p class="text-xl text-gray-600">Comments, Questions or Order Information</p>
             </div>
             
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
                 <!-- Contact Info -->
-                <div class="space-y-8">
-                    <div>
-                        <h3 class="text-2xl font-serif font-semibold text-earth-brown mb-6">Contact Information</h3>
-                        <div class="space-y-4">
-                            <?php if (!empty($settings['contact_email'])): ?>
-                                <div class="flex items-center">
-                                    <svg class="w-6 h-6 text-dusty-blue mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
-                                    </svg>
-                                    <span class="text-gray-700"><?php echo sanitizeInput($settings['contact_email']); ?></span>
-                                </div>
-                            <?php endif; ?>
-                            
-                            <?php if (!empty($settings['phone'])): ?>
-                                <div class="flex items-center">
-                                    <svg class="w-6 h-6 text-dusty-blue mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
-                                    </svg>
-                                    <span class="text-gray-700"><?php echo sanitizeInput($settings['phone']); ?></span>
-                                </div>
-                            <?php endif; ?>
-                            
-                            <?php if (!empty($settings['address'])): ?>
-                                <div class="flex items-center">
-                                    <svg class="w-6 h-6 text-dusty-blue mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                                    </svg>
-                                    <span class="text-gray-700"><?php echo sanitizeInput($settings['address']); ?></span>
-                                </div>
-                            <?php endif; ?>
+                <div class="bg-white p-8 rounded-lg border border-sage">
+                    <h3 class="text-2xl font-serif font-semibold text-earth-brown mb-6">Contact Information</h3>
+                    <div class="space-y-4 mb-8">
+                        <div class="flex items-center">
+                            <svg class="w-6 h-6 text-dusty-blue mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                            </svg>
+                            <div>
+                                <p class="text-sm font-medium text-earth-brown">Email</p>
+                                <a href="mailto:cris@crismitchellphotography.com" class="text-gray-700 hover:text-caramel transition duration-200">
+                                    cris@crismitchellphotography.com
+                                </a>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center">
+                            <svg class="w-6 h-6 text-dusty-blue mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
+                            </svg>
+                            <div>
+                                <p class="text-sm font-medium text-earth-brown">Phone</p>
+                                <a href="tel:8054411187" class="text-gray-700 hover:text-caramel transition duration-200">
+                                    805.441.1187
+                                </a>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center">
+                            <svg class="w-6 h-6 text-dusty-blue mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            </svg>
+                            <div>
+                                <p class="text-sm font-medium text-earth-brown">Location</p>
+                                <span class="text-gray-700">PO Box 3091<br>Shell Beach, CA 93448</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Logo -->
+                    <div class="pt-8 border-t border-sage">
+                        <div class="flex justify-center">
+                            <img src="/assets/images/cris-mitchell-logo.png" alt="Cris Mitchell Photography Logo" class="w-32 h-32 object-contain">
                         </div>
                     </div>
                 </div>
                 
-                <!-- Contact Form -->
+                <!-- Social Media -->
                 <div class="bg-white p-8 rounded-lg border border-sage">
-                    <h3 class="text-2xl font-serif font-semibold text-earth-brown mb-6">Send a Message</h3>
+                    <h3 class="text-2xl font-serif font-semibold text-earth-brown mb-6">Follow My Work</h3>
                     
-                    <form x-data="contactForm" @submit.prevent="submitForm" class="space-y-6">
-                        <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
+                    <div class="space-y-6">
+                        <p class="text-gray-600">Stay updated with my latest work and behind-the-scenes content on social media.</p>
                         
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <label for="name" class="block text-sm font-medium text-earth-brown mb-2">Name *</label>
-                                <input type="text" x-model="form.name" id="name" required
-                                       class="w-full px-3 py-2 border border-sage rounded-lg focus:outline-none focus:ring-2 focus:ring-caramel">
-                            </div>
+                        <div class="space-y-4">
+                            <!-- Facebook -->
+                            <a href="https://www.facebook.com/CrisMitchellPhotography" target="_blank" rel="noopener noreferrer" 
+                               class="group flex items-center p-4 border border-sage rounded-lg hover:bg-light-sage transition duration-300">
+                                <div class="flex items-center justify-center w-12 h-12 bg-dusty-blue text-white rounded-full group-hover:bg-earth-brown transition duration-300 mr-4">
+                                    <svg class="w-6 h-6 group-hover:scale-110 transition-transform duration-200" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <p class="font-medium text-earth-brown group-hover:text-caramel transition duration-200">Facebook</p>
+                                    <p class="text-sm text-gray-600">Cris Mitchell Photography</p>
+                                </div>
+                            </a>
                             
-                            <div>
-                                <label for="email" class="block text-sm font-medium text-earth-brown mb-2">Email *</label>
-                                <input type="email" x-model="form.email" id="email" required
-                                       class="w-full px-3 py-2 border border-sage rounded-lg focus:outline-none focus:ring-2 focus:ring-caramel">
-                            </div>
-                            
-                            <div>
-                                <label for="phone" class="block text-sm font-medium text-earth-brown mb-2">Phone</label>
-                                <input type="tel" x-model="form.phone" id="phone"
-                                       class="w-full px-3 py-2 border border-sage rounded-lg focus:outline-none focus:ring-2 focus:ring-caramel">
-                            </div>
-                            
-                            <div>
-                                <label for="subject" class="block text-sm font-medium text-earth-brown mb-2">Subject</label>
-                                <input type="text" x-model="form.subject" id="subject"
-                                       class="w-full px-3 py-2 border border-sage rounded-lg focus:outline-none focus:ring-2 focus:ring-caramel">
-                            </div>
+                            <!-- Instagram -->
+                            <a href="https://www.instagram.com/crismitchellphotography/" target="_blank" rel="noopener noreferrer" 
+                               class="group flex items-center p-4 border border-sage rounded-lg hover:bg-light-sage transition duration-300">
+                                <div class="flex items-center justify-center w-12 h-12 bg-dusty-blue text-white rounded-full group-hover:bg-earth-brown transition duration-300 mr-4">
+                                    <svg class="w-6 h-6 group-hover:scale-110 transition-transform duration-200" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <p class="font-medium text-earth-brown group-hover:text-caramel transition duration-200">Instagram</p>
+                                    <p class="text-sm text-gray-600">@crismitchellphotography</p>
+                                </div>
+                            </a>
                         </div>
-                        
-                        <div>
-                            <label for="message" class="block text-sm font-medium text-earth-brown mb-2">Message *</label>
-                            <textarea x-model="form.message" id="message" rows="6" required
-                                      class="w-full px-3 py-2 border border-sage rounded-lg focus:outline-none focus:ring-2 focus:ring-caramel"></textarea>
-                        </div>
-                        
-                        <div x-show="message" class="p-4 rounded-lg" :class="isSuccess ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'">
-                            <p x-text="message"></p>
-                        </div>
-                        
-                        <button type="submit" :disabled="isSubmitting" 
-                                class="w-full bg-caramel text-white py-3 px-6 rounded-lg hover:bg-earth-brown disabled:opacity-50 transition duration-200"
-                                :class="{ 'cursor-not-allowed': isSubmitting }">
-                            <span x-show="!isSubmitting">Send Message</span>
-                            <span x-show="isSubmitting">Sending...</span>
-                        </button>
-                    </form>
+                    </div>
                 </div>
             </div>
         </div>
@@ -575,12 +563,12 @@ $aboutImage = !empty($settings['about_image']) ? '/assets/uploads/full/' . $sett
                 <h3 class="text-2xl font-serif font-bold mb-4">
                     <?php echo sanitizeInput($settings['site_title'] ?? 'Photography Portfolio'); ?>
                 </h3>
-                <p class="text-gray-400 mb-6">
-                    <?php echo sanitizeInput($settings['site_tagline'] ?? 'Capturing moments, creating memories'); ?>
+                <p class="text-white mb-6">
+                    Fine Art Landscape Photography
                 </p>
                 
-                <p class="text-gray-500 text-sm">
-                    © <?php echo date('Y'); ?> <?php echo sanitizeInput($settings['site_title'] ?? 'Photography Portfolio'); ?>. All rights reserved.
+                <p class="text-white text-sm">
+                    © 2025 Cris Mitchell Photography. All rights reserved.
                 </p>
             </div>
         </div>

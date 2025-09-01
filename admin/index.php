@@ -73,12 +73,10 @@ $recentContacts = $db->query("SELECT * FROM contacts ORDER BY created_at DESC LI
                     <div class="hidden md:flex space-x-4">
                         <a href="/admin/" class="text-earth-brown font-medium">Dashboard</a>
                         <a href="/admin/galleries.php" class="text-custom-blue hover:text-earth-brown transition">Galleries</a>
-                        <a href="/admin/images.php" class="text-custom-blue hover:text-earth-brown transition">Images</a>
-                        <a href="/admin/products.php" class="text-custom-blue hover:text-earth-brown transition">Products</a>
-                        <a href="/admin/services.php" class="text-custom-blue hover:text-earth-brown transition">Services</a>
-                        <a href="/admin/settings.php" class="text-custom-blue hover:text-earth-brown transition">Settings</a>
-                        <a href="/admin/contacts.php" class="text-custom-blue hover:text-earth-brown transition">Contacts</a>
+                        <a href="/admin/recent-work.php" class="text-custom-blue hover:text-earth-brown transition">Recent Work</a>
+                        <a href="/admin/print-settings.php" class="text-custom-blue hover:text-earth-brown transition">Print Settings</a>
                         <a href="/admin/orders.php" class="text-custom-blue hover:text-earth-brown transition">Orders</a>
+                        <a href="/admin/settings.php" class="text-custom-blue hover:text-earth-brown transition">Settings</a>
                     </div>
                 </div>
                 <div class="flex items-center space-x-4">
@@ -178,14 +176,14 @@ $recentContacts = $db->query("SELECT * FROM contacts ORDER BY created_at DESC LI
                     <a href="/admin/galleries.php?action=add" class="block w-full bg-earth-brown text-white text-center py-2 px-4 rounded hover:bg-earth-brown hover:bg-opacity-90 transition">
                         Create New Gallery
                     </a>
-                    <a href="/admin/photos.php" class="block w-full bg-sage text-white text-center py-2 px-4 rounded hover:bg-custom-blue transition">
-                        Upload Photos
+                    <a href="/admin/recent-work.php" class="block w-full bg-sage text-white text-center py-2 px-4 rounded hover:bg-custom-blue transition">
+                        Manage Recent Work
                     </a>
-                    <a href="/admin/orders.php" class="block w-full bg-dusty-blue text-white text-center py-2 px-4 rounded hover:bg-custom-blue transition">
-                        View Orders
+                    <a href="/admin/print-settings.php" class="block w-full bg-dusty-blue text-white text-center py-2 px-4 rounded hover:bg-custom-blue transition">
+                        Print Settings
                     </a>
                     <a href="/admin/settings.php" class="block w-full bg-caramel text-white text-center py-2 px-4 rounded hover:bg-earth-brown transition">
-                        Edit Site Settings
+                        Site Settings
                     </a>
                 </div>
             </div>
